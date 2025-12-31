@@ -1,0 +1,57 @@
+const express = require("express");
+const cors = require("cors");
+const { initWhatsApp, getSock } = require("./whatsapp");
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+const PORT = process.env.PORT || 3000;
+
+initWhatsApp().then(() => console.log("WhatsApp initialized"));
+
+
+app.get("/send", async (req, res) => {
+  try {
+    const { to, message } = req.query;
+
+    if (!to || !message) {
+      return res.status(400).json({ error: "Missing 'to' or 'message' parameter" });
+    }
+
+    const sock = getSock();
+
+    const sends = await sock.sendMessage(`${to}`, { text: message });
+
+    // Baileys returns an object with 'key' containing 'id' and 'remoteJid'
+    if (sends?.key?.id) {
+      console.log("Message sent successfully:");
+      return res.json({ success: true, id: sends.key.id });
+    } else {
+      console.log("Message failed to send:");
+      return res.status(500).json({ success: false, error: "Message failed to send" });
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+ 
+
+// API route to fetch groups
+app.get("/groups", async (req, res) => {
+  try {
+    const sock = getSock();
+    const groups = await sock.groupFetchAllParticipating();
+    const groupList = Object.values(groups).map((group) => ({
+      id: group.id,
+      name: group.subject,
+    }));
+    res.json(groupList);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
