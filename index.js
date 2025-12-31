@@ -5,29 +5,26 @@ const redis = require("redis");
 const app = express();
 app.use(cors());
 app.use(express.json());
-
+const { getCurrentTimestamp } = require("./timestamp");
 const PORT = process.env.PORT || 3000;
 
 initWhatsApp().then(() => console.log("WhatsApp initialized"));
 
-const redisClient = redis.createClient({
-  url: process.env.REDIS_URL || "redis://172.16.2.13:32769",
-});
-
-redisClient.on("error", (err) => console.error("Redis Client Error", err));
-
-redisClient.connect().then(() => {
-  console.log("Connected to Redis");
-});
+const Alerts = [];
 
 app.get("/send", async (req, res) => {
   try {
-    if (redisClient.rPopCount("alertQueue", 1) === 0) {
-      return res.json({ success: true, message: "No alerts in queue" });
+    timestamp = getCurrentTimestamp();
+    if (Alerts.length === 0) {
+      console.log("No alerts in queue ", timestamp);
+      return res.json({
+        success: true,
+        message: "No alerts in queue",
+        timestamp,
+      });
     } else {
-      const alert = await redisClient.lPop("alertQueue");
-      const { to, message } = JSON.parse(alert);
-
+      const { to, message } = Alerts.shift();
+      console.log("Processing alert:", { to, message }, timestamp);
       if (!to || !message) {
         return res
           .status(400)
@@ -41,9 +38,11 @@ app.get("/send", async (req, res) => {
       // Baileys returns an object with 'key' containing 'id' and 'remoteJid'
       if (sends?.key?.id) {
         console.log("Message sent successfully:");
-        return res.json({ success: true, id: sends.key.id });
+
+        return res.json({ success: true, id: sends.key.id, timestamp });
       } else {
-        console.log("Message failed to send:");
+        console.log("Message failed to send:", timestamp);
+        Alerts.push({ to, message }); // Re-queue the alert
         return res
           .status(500)
           .json({ success: false, error: "Message failed to send" });
@@ -79,7 +78,7 @@ app.post("/queuealert", async (req, res) => {
         .status(400)
         .json({ error: "Missing 'to' or 'message' in request body" });
     }
-    redisClient.rPush("alertQueue", JSON.stringify({ to, message }));
+    Alerts.push({ to, message });
     res.json({ success: true, message: "Alert queued" });
   } catch (err) {
     console.error(err);

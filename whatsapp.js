@@ -40,6 +40,7 @@ async function initWhatsApp() {
   sock.ev.on("connection.update", async ({ qr, connection, lastDisconnect }) => {
     if (qr) {
       const qrUrl = await QRCode.toDataURL(qr);
+      console.log("\n\n\n\n\n\n\n")
       console.log("Scan QR Code (URL):", qrUrl);
     }
  
