@@ -1,11 +1,16 @@
 const makeWASocket = require("@whiskeysockets/baileys").default;
-const { useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/baileys");
+const {
+  useMultiFileAuthState,
+  DisconnectReason,
+} = require("@whiskeysockets/baileys");
 const Pino = require("pino");
 const QRCode = require("qrcode");
 const NodeCache = require("node-cache");
+const fs = require("fs/promises");
 
 let sock = null;
 let isInitializing = false;
+
 const groupCache = new NodeCache({ stdTTL: 5 * 60, useClones: false });
 
 async function initWhatsApp() {
@@ -16,7 +21,6 @@ async function initWhatsApp() {
 
   sock = makeWASocket({
     auth: state,
-    printQRInTerminal: true,
     browser: ["NodeJS API", "Chrome", "1.0"],
     logger: Pino({ level: "silent" }),
     cachedGroupMetadata: async (jid) => groupCache.get(jid),
@@ -24,43 +28,52 @@ async function initWhatsApp() {
 
   sock.ev.on("creds.update", saveCreds);
 
-  sock.ev.on("groups.update", async ([event]) => {
-    if (!sock) return;
-    const metadata = await sock.groupMetadata(event.id || "");
-    groupCache.set(event.id || "", metadata);
-  });
+  sock.ev.on("connection.update", async (update) => {
+    const { qr, connection, lastDisconnect } = update;
 
-  sock.ev.on("group-participants.update", async (event) => {
-    if (!sock) return;
-    const metadata = await sock.groupMetadata(event.id);
-    groupCache.set(event.id, metadata);
-  });
-
-  // connection updates
-  sock.ev.on("connection.update", async ({ qr, connection, lastDisconnect }) => {
     if (qr) {
-      const qrUrl = await QRCode.toDataURL(qr);
-      console.log("\n\n\n\n\n\n\n")
-      console.log("Scan QR Code (URL):", qrUrl);
+      console.log(
+        await QRCode.toString(qr, { type: "terminal", small: true })
+      );
     }
- 
+
     if (connection === "close") {
-      const reason = lastDisconnect?.error?.output?.statusCode;
-      console.log("Connection closed, reason:", reason);
+      const error = lastDisconnect?.error;
+      const statusCode = error?.output?.statusCode;
+      const reason = error?.output?.payload?.error;
+
+      console.log("Connection closed:", statusCode, reason);
+
       sock = null;
       isInitializing = false;
-      if (reason !== DisconnectReason.loggedOut) {
-        console.log("Reconnecting...");
-        initWhatsApp();
+
+      // ❌ Conflict = stop completely
+      if (reason === "conflict") {
+        console.error("❌ Logged in elsewhere. Exiting.");
+        process.exit(1);
       }
+
+      // 🔑 Logged out → reset auth & show NEW QR
+      if (statusCode === DisconnectReason.loggedOut) {
+        console.log("🔐 Logged out. Resetting auth and generating new QR...");
+        await fs.rm("auth_info", { recursive: true, force: true });
+
+        // slight delay avoids race conditions
+        setTimeout(initWhatsApp, 1000);
+        return;
+      }
+
+      // 🔁 Normal reconnect
+      console.log("🔁 Reconnecting...");
+      setTimeout(initWhatsApp, 5000);
     }
 
     if (connection === "open") {
       console.log("✅ WhatsApp connected");
+      isInitializing = false;
     }
   });
 
-  isInitializing = false;
   return sock;
 }
 
