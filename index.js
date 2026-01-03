@@ -3,6 +3,7 @@ const cors = require("cors");
 const { initWhatsApp, getSock } = require("./whatsapp");
 const redis = require("redis");
 const app = express();
+const puppeteer = require("puppeteer");
 app.use(cors());
 app.use(express.json());
 const { getCurrentTimestamp } = require("./timestamp");
@@ -84,6 +85,27 @@ app.post("/queuealert", async (req, res) => {
     console.error(err);
     res.status(500).json({ error: err.message });
   }
+});
+
+app.get("/test", async (req, res) => {
+  const browser = await puppeteer.launch();
+  const page = await browser.newPage();
+  await page.goto("https://google.com", { waitUntil: "networkidle0" });
+  await page.setViewport({
+    width: 1080,
+    height: 1024,
+  });
+  const screenshot = await page.screenshot({
+    path: "lazy.png",
+     clip: { x: 100, y: 200, width: 500, height: 300 }
+  });
+  const sock = getSock();
+  sock.sendMessage("120363423231838223@g.us", {
+    image: {
+      url: "./lazy.png",
+    },
+  });
+  res.status(200).json({});
 });
 
 app.listen(PORT, () =>
