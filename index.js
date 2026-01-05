@@ -90,20 +90,68 @@ app.post("/queuealert", async (req, res) => {
 app.get("/test", async (req, res) => {
   const browser = await puppeteer.launch();
   const page = await browser.newPage();
-  await page.goto("https://google.com", { waitUntil: "networkidle0" });
+  await page.goto(
+    "http://192.168.36.113/zabbix/zabbix.php?action=dashboard.view",
+    { waitUntil: "networkidle0" }
+  );
   await page.setViewport({
-    width: 1080,
-    height: 1024,
+    width: 2560,
+    height: 1440,
   });
-  const screenshot = await page.screenshot({
-    path: "lazy.png",
-     clip: { x: 100, y: 200, width: 500, height: 300 }
-  });
+  const client = await page.createCDPSession();
+  await client.send("Emulation.setPageScaleFactor", { pageScaleFactor: 6 });
+  let pageUrl = await page.url();
+
+  console.log(pageUrl);
+  if (
+    pageUrl == "http://192.168.36.113/zabbix/zabbix.php?action=dashboard.view"
+  ) {
+    await page.goto("http://192.168.36.113/zabbix/", {
+      waitUntil: "networkidle0",
+    });
+
+    await page.type("#name", "jovani");
+    await page.type("#password", "315pr0t3ct");
+    await page.click("#enter", { count: 1 });
+
+    await page.waitForNavigation({ waitUntil: "networkidle0" });
+
+    const exists = await page.evaluate(() => {
+      // Use !! to convert the result of querySelector to a boolean
+      return !!document.querySelector(".btn-kiosk");
+    });
+
+    if (exists) {
+      console.log("Element exists via evaluate.");
+    }
+    if (!exists) {
+      const screenshot = await page.screenshot({
+        path: "pic1.png",
+        // clip: {
+        //   x: 200,
+        //   y: 783,
+        //   width:1920,
+        //   height:1080
+        // },
+      });
+    } else {
+      console.log("Koisk Mode Button Exist");
+      await page.click(".btn-kiosk", { count: 1 });
+      const screenshot = await page.screenshot({
+        path: "pic1.png",
+        // clip: { x: 2555, y: 1127 },
+      });
+    }
+  }
+
   const sock = getSock();
   sock.sendMessage("120363423231838223@g.us", {
     image: {
-      url: "./lazy.png",
+      url: "./pic1.png",
     },
+    text:
+      "Please check the screenshot of zabbix at the time of " +
+      getCurrentTimestamp(),
   });
   res.status(200).json({});
 });
