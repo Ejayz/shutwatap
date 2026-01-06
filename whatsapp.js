@@ -7,7 +7,7 @@ const Pino = require("pino");
 const QRCode = require("qrcode");
 const NodeCache = require("node-cache");
 const fs = require("fs/promises");
-
+const puppet = require("./puppet");
 let sock = null;
 let isInitializing = false;
 
@@ -28,13 +28,24 @@ async function initWhatsApp() {
 
   sock.ev.on("creds.update", saveCreds);
 
+  sock.ev.on("messages.upsert", ({ type, messages }) => {
+    if (type == "notify") {
+      // new messages
+      for (const message of messages) {
+        if (message.message.conversation == "!zabbix") {
+          puppet.zabbix_screenshot(sock,message.key.participantAlt);
+        }
+      }
+    } else {
+      // old already seen / handled messages
+      // handle them however you want to
+    }
+  });
   sock.ev.on("connection.update", async (update) => {
     const { qr, connection, lastDisconnect } = update;
 
     if (qr) {
-      console.log(
-        await QRCode.toString(qr, { type: "terminal", small: true })
-      );
+      console.log(await QRCode.toString(qr, { type: "terminal", small: true }));
     }
 
     if (connection === "close") {

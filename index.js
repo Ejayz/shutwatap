@@ -1,15 +1,21 @@
 const express = require("express");
 const cors = require("cors");
 const { initWhatsApp, getSock } = require("./whatsapp");
-const redis = require("redis");
 const app = express();
-const puppeteer = require("puppeteer");
-app.use(cors());
+const dotenv=require("dotenv")
+const puppeteer = require("puppeteer")
+ app.use(cors());
 app.use(express.json());
 const { getCurrentTimestamp } = require("./timestamp");
 const PORT = process.env.PORT || 3000;
 
 initWhatsApp().then(() => console.log("WhatsApp initialized"));
+
+dotenv.config();
+const USERNAME = process.env.ZABBIX_USERNAME || "";
+const PASSWORD = process.env.ZABBIX_PASSWORD || "";
+const ZABBIX_IP = process.env.ZABBIX_IP || "";
+const WHATSAPP_USERS= process.env.WHATSAPP_USERS||""
 
 const Alerts = [];
 
@@ -91,7 +97,7 @@ app.get("/test", async (req, res) => {
   const browser = await puppeteer.launch();
   const page = await browser.newPage();
   await page.goto(
-    "http://192.168.36.113/zabbix/zabbix.php?action=dashboard.view",
+    `http://${ZABBIX_IP}/zabbix/zabbix.php?action=dashboard.view`,
     { waitUntil: "networkidle0" }
   );
   await page.setViewport({
@@ -104,54 +110,40 @@ app.get("/test", async (req, res) => {
 
   console.log(pageUrl);
   if (
-    pageUrl == "http://192.168.36.113/zabbix/zabbix.php?action=dashboard.view"
+    pageUrl == `http://${ZABBIX_IP}/zabbix/zabbix.php?action=dashboard.view`
   ) {
-    await page.goto("http://192.168.36.113/zabbix/", {
+    await page.goto(`http://${ZABBIX_IP}/zabbix/`, {
       waitUntil: "networkidle0",
     });
 
-    await page.type("#name", "jovani");
-    await page.type("#password", "315pr0t3ct");
+    await page.type("#name", USERNAME);
+    await page.type("#password", PASSWORD);
     await page.click("#enter", { count: 1 });
 
     await page.waitForNavigation({ waitUntil: "networkidle0" });
 
     const exists = await page.evaluate(() => {
-      // Use !! to convert the result of querySelector to a boolean
       return !!document.querySelector(".btn-kiosk");
     });
 
-    if (exists) {
-      console.log("Element exists via evaluate.");
-    }
     if (!exists) {
-      const screenshot = await page.screenshot({
-        path: "pic1.png",
-        // clip: {
-        //   x: 200,
-        //   y: 783,
-        //   width:1920,
-        //   height:1080
-        // },
+      await page.screenshot({
+        path: "./zabbix_screenshot.png",
       });
     } else {
-      console.log("Koisk Mode Button Exist");
       await page.click(".btn-kiosk", { count: 1 });
-      const screenshot = await page.screenshot({
-        path: "pic1.png",
-        // clip: { x: 2555, y: 1127 },
+      await page.screenshot({
+        path: "./zabbix_screenshot.png",
       });
     }
   }
 
   const sock = getSock();
-  sock.sendMessage("120363423231838223@g.us", {
+
+  sock.sendMessage(WHATSAPP_USERS, {
     image: {
-      url: "./pic1.png",
+      url: "./zabbix_screenshot.png",
     },
-    text:
-      "Please check the screenshot of zabbix at the time of " +
-      getCurrentTimestamp(),
   });
   res.status(200).json({});
 });
