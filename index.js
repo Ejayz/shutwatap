@@ -1,15 +1,21 @@
 const express = require("express");
 const cors = require("cors");
 const { initWhatsApp, getSock } = require("./whatsapp");
-const redis = require("redis");
 const app = express();
-const puppeteer = require("puppeteer");
-app.use(cors());
+const dotenv=require("dotenv")
+const puppeteer = require("puppeteer")
+ app.use(cors());
 app.use(express.json());
 const { getCurrentTimestamp } = require("./timestamp");
 const PORT = process.env.PORT || 3000;
 
 initWhatsApp().then(() => console.log("WhatsApp initialized"));
+
+dotenv.config();
+const USERNAME = process.env.ZABBIX_USERNAME || "";
+const PASSWORD = process.env.ZABBIX_PASSWORD || "";
+const ZABBIX_IP = process.env.ZABBIX_IP || "";
+const WHATSAPP_USERS= process.env.WHATSAPP_USERS||""
 
 const Alerts = [];
 
@@ -90,19 +96,53 @@ app.post("/queuealert", async (req, res) => {
 app.get("/test", async (req, res) => {
   const browser = await puppeteer.launch();
   const page = await browser.newPage();
-  await page.goto("https://google.com", { waitUntil: "networkidle0" });
+  await page.goto(
+    `http://${ZABBIX_IP}/zabbix/zabbix.php?action=dashboard.view`,
+    { waitUntil: "networkidle0" }
+  );
   await page.setViewport({
-    width: 1080,
-    height: 1024,
+    width: 2560,
+    height: 1440,
   });
-  const screenshot = await page.screenshot({
-    path: "lazy.png",
-     clip: { x: 100, y: 200, width: 500, height: 300 }
-  });
+  const client = await page.createCDPSession();
+  await client.send("Emulation.setPageScaleFactor", { pageScaleFactor: 6 });
+  let pageUrl = await page.url();
+
+  console.log(pageUrl);
+  if (
+    pageUrl == `http://${ZABBIX_IP}/zabbix/zabbix.php?action=dashboard.view`
+  ) {
+    await page.goto(`http://${ZABBIX_IP}/zabbix/`, {
+      waitUntil: "networkidle0",
+    });
+
+    await page.type("#name", USERNAME);
+    await page.type("#password", PASSWORD);
+    await page.click("#enter", { count: 1 });
+
+    await page.waitForNavigation({ waitUntil: "networkidle0" });
+
+    const exists = await page.evaluate(() => {
+      return !!document.querySelector(".btn-kiosk");
+    });
+
+    if (!exists) {
+      await page.screenshot({
+        path: "./zabbix_screenshot.png",
+      });
+    } else {
+      await page.click(".btn-kiosk", { count: 1 });
+      await page.screenshot({
+        path: "./zabbix_screenshot.png",
+      });
+    }
+  }
+
   const sock = getSock();
-  sock.sendMessage("120363423231838223@g.us", {
+
+  sock.sendMessage(WHATSAPP_USERS, {
     image: {
-      url: "./lazy.png",
+      url: "./zabbix_screenshot.png",
     },
   });
   res.status(200).json({});
