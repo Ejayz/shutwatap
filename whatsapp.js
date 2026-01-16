@@ -10,9 +10,10 @@ const fs = require("fs/promises");
 const puppet = require("./puppet");
 let sock = null;
 let isInitializing = false;
-
+const ping = require("net-ping");
+const ping_calculation = require("./ping").ping_calculation;
 const groupCache = new NodeCache({ stdTTL: 5 * 60, useClones: false });
-
+const { status_check } = require("./status");
 async function initWhatsApp() {
   if (sock || isInitializing) return sock;
   isInitializing = true;
@@ -30,15 +31,32 @@ async function initWhatsApp() {
 
   sock.ev.on("messages.upsert", ({ type, messages }) => {
     if (type == "notify") {
-      // new messages
       for (const message of messages) {
-        if (message.message.conversation == "!zabbix") {
-          puppet.zabbix_screenshot(sock,message.key.participantAlt);
+        if (message.message.conversation == "!zabbix" && !message.key.fromMe) {
+          status_check(sock, message);
+          sock.sendMessage(message.key.remoteJid, {
+            text: `Hi ${message.pushName}, Preparing Zabbix screenshot, This may take a while. please wait...`,
+          });
+          status_check(sock, message);
+          puppet.zabbix_screenshot(sock, message);
+        }
+        if (message.message.conversation == "!help" && !message.key.fromMe) {
+          sock.sendMessage(message.key.remoteJid, {
+            text: `Available Commands:\n1.!zabbix - Get Zabbix Dashboard Screenshot\n2.!help - List Available Commands`,
+          });
+        }
+        if (
+          message.message.conversation.startsWith("!ping") &&
+          !message.key.fromMe
+        ) {
+          const commands = message.message.conversation;
+          sock.sendMessage(message.key.remoteJid, {
+            text: `Hi ${message.pushName}, Preparing Ping results, This may take a while. please wait...`,
+          });
+          ping_calculation(sock, message);
         }
       }
     } else {
-      // old already seen / handled messages
-      // handle them however you want to
     }
   });
   sock.ev.on("connection.update", async (update) => {
@@ -58,7 +76,6 @@ async function initWhatsApp() {
       sock = null;
       isInitializing = false;
 
-      // ❌ Conflict = stop completely
       if (reason === "conflict") {
         console.error("❌ Logged in elsewhere. Exiting.");
         process.exit(1);

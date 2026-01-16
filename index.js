@@ -2,9 +2,9 @@ const express = require("express");
 const cors = require("cors");
 const { initWhatsApp, getSock } = require("./whatsapp");
 const app = express();
-const dotenv=require("dotenv")
-const puppeteer = require("puppeteer")
- app.use(cors());
+const dotenv = require("dotenv");
+const puppeteer = require("puppeteer");
+app.use(cors());
 app.use(express.json());
 const { getCurrentTimestamp } = require("./timestamp");
 const PORT = process.env.PORT || 3000;
@@ -15,15 +15,19 @@ dotenv.config();
 const USERNAME = process.env.ZABBIX_USERNAME || "";
 const PASSWORD = process.env.ZABBIX_PASSWORD || "";
 const ZABBIX_IP = process.env.ZABBIX_IP || "";
-const WHATSAPP_USERS= process.env.WHATSAPP_USERS||""
+const WHATSAPP_USERS = process.env.WHATSAPP_USERS || "";
 
 const Alerts = [];
+
+app.get("/", (req, res) => {
+  res.sendFile(__dirname + "/index.html");
+});
 
 app.get("/send", async (req, res) => {
   try {
     timestamp = getCurrentTimestamp();
     if (Alerts.length === 0) {
-      console.log("No alerts in queue ", timestamp);
+      console.log(`${timestamp} - No alerts in queue .`);
       return res.json({
         success: true,
         message: "No alerts in queue",
@@ -31,7 +35,9 @@ app.get("/send", async (req, res) => {
       });
     } else {
       const { to, message } = Alerts.shift();
-      console.log("Processing alert:", { to, message }, timestamp);
+      console.log(
+        `${timestamp} Processing alert: To:${to.toString()} , Message: ${message}`
+      );
       if (!to || !message) {
         return res
           .status(400)
@@ -42,14 +48,13 @@ app.get("/send", async (req, res) => {
 
       const sends = await sock.sendMessage(`${to}`, { text: message });
 
-      // Baileys returns an object with 'key' containing 'id' and 'remoteJid'
       if (sends?.key?.id) {
-        console.log("Message sent successfully:");
 
+        console.log("Message sent successfully:");
         return res.json({ success: true, id: sends.key.id, timestamp });
       } else {
-        console.log("Message failed to send:", timestamp);
-        Alerts.push({ to, message }); // Re-queue the alert
+        console.log(`${timestamp} - Message failed to send:`);
+        Alerts.push({ to, message });
         return res
           .status(500)
           .json({ success: false, error: "Message failed to send" });
@@ -60,6 +65,8 @@ app.get("/send", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+
 
 app.get("/groups", async (req, res) => {
   try {

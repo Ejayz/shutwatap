@@ -2,14 +2,16 @@ const dotenv = require("dotenv");
 dotenv.config();
 const puppeteer = require("puppeteer");
 const { getCurrentTimestamp } = require("./timestamp");
-
+const { status_check } = require("./status");
 dotenv.config();
+
 const USERNAME = process.env.ZABBIX_USERNAME || "";
 const PASSWORD = process.env.ZABBIX_PASSWORD || "";
 const ZABBIX_IP = process.env.ZABBIX_IP || "";
-const WHATSAPP_USERS= process.env.WHATSAPP_USERS||""
+const WHATSAPP_USERS = process.env.WHATSAPP_USERS || "";
 
 async function zabbix_screenshot(sock, user) {
+  status_check(sock, user);
   const browser = await puppeteer.launch();
   const page = await browser.newPage();
   await page.goto(
@@ -58,18 +60,13 @@ async function zabbix_screenshot(sock, user) {
       });
     }
   }
-  sock.sendMessage(WHATSAPP_USERS, {
-    text: `Hi ${user.split("@")[0]},Please see the zabbix screenshot here . `,
-    mention:[user]
+  
+  sock.sendMessage(user.key.remoteJid, {
+    image: {
+      url: "./zabbix_screenshot.png",
+    },
   });
-
-  setTimeout(() => {
-    sock.sendMessage(WHATSAPP_USERS, {
-      image: {
-        url: "./zabbix_screenshot.png",
-      },
-    });
-  }, 1000);
+  await browser.close();
 }
 
 module.exports = { zabbix_screenshot };
